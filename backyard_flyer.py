@@ -19,7 +19,6 @@ class MyDrone(Drone):
         assert self.v.check_connection()
 
         # Plot NE
-        # ne = np.array(self.local_position[0], self.local_position[1]).reshape(-1, 2)
         ne = np.array((self.local_position[0], self.local_position[1])).reshape(-1, 2)
 
         self.ne_plot = self.v.scatter(ne, opts=dict(
@@ -30,9 +29,9 @@ class MyDrone(Drone):
 
         # Plot D
         d = np.array([self.local_position[2]])        
-        self.t = [1]
+        self.t = 1
         print(d.ndim) 
-        self.d_plot = self.v.line(d, X=np.array(self.t), opts=dict(
+        self.d_plot = self.v.line(d, X=np.array([self.t]), opts=dict(
             title="Altitude (meters)", 
             xlabel='Timestep', 
             ylabel='Down'
@@ -59,37 +58,46 @@ class BackyardFlyer(MyDrone):
         # initial state
         self.flight_state = States.MANUAL
 
-        # TODO: Register all your callbacks here
         self.register_callback(MsgID.LOCAL_POSITION, self.local_position_callback)
-        # self.register_callback(MsgID.LOCAL_VELOCITY, self.velocity_callback)
-        # self.register_callback(MsgID.STATE, self.state_callback)
+        self.register_callback(MsgID.LOCAL_VELOCITY, self.velocity_callback)
+        self.register_callback(MsgID.STATE, self.state_callback)
+
+        self.register_callback(MsgID.LOCAL_POSITION, self.update_ne_plot)
+        self.register_callback(MsgID.LOCAL_POSITION, self.update_d_plot)
 
     def local_position_callback(self):
         """
-        TODO: Implement this method
-
         This triggers when `MsgID.LOCAL_POSITION` is received and self.local_position contains new data
         """
-        if self.flight_phase == Phases.TAKEOFF:
+        if self.flight_state == States.TAKEOFF:
 
             # coordinate conversion 
             altitude = -1.0 * self.local_position[2]
 
             # check if altitude is within 95% of target
             if altitude > 0.95 * self.target_position[2]:
-                self.landing_transition()
-            
-            north = self.local_position[0]
-            east =  self.local_position[1]
+                self.all_waypoints = self.calculate_box()
+                self.waypoint_transition()
+
+        elif self.flight_state == States.WAYPOINT:            
+            if np.linalg.norm(self.target_position[0:2] - self.local_position[0:2]) < 1.0:
+                if len(self.all_waypoints) > 0:
+                    self.waypoint_transition()
+                else:
+                    if np.linalg.norm(self.local_velocity[0:2]) < 1.0:                    
+                        self.landing_transition()            
+
 
 
     def velocity_callback(self):
         """
-        TODO: Implement this method
-
         This triggers when `MsgID.LOCAL_VELOCITY` is received and self.local_velocity contains new data
         """
-        pass
+        if self.flight_state == States.LANDING:
+            if self.global_position[2] - self.global_home[2] < 0.1:
+                if abs(self.local_position[2]) < 0.01:
+                    self.disarming_transition()
+
 
     def state_callback(self):
         """
@@ -104,13 +112,24 @@ class BackyardFlyer(MyDrone):
             elif self.flight_state == States.DISARMING:
                 if ~self.armed & ~self.guided:
                     self.manual_transition()
-            
 
+    def update_ne_plot(self):
+        ne = np.array([self.local_position[0], self.local_position[1]]).reshape(-1, 2)
+        self.v.scatter(ne, win=self.ne_plot, update='append')
+
+    def update_d_plot(self):
+        d = -np.array([self.local_position[2]])
+        # update timestep
+        self.t += 1    
+        self.v.line(d, X=np.array([self.t]), win=self.d_plot, update='append')
+        
     def calculate_box(self):
         """        
         1. Return waypoints to fly a box
         """
-        local_waypoints = [[10.0, 0.0, 3.0], [10.0, 10.0, 3.0], [0.0, 10.0, 3.0], [0.0, 0.0, 3.0]]
+        # local_waypoints = [[10.0, 0.0, 3.0], [10.0, 10.0, 3.0], [0.0, 10.0, 3.0], [0.0, 0.0, 3.0]]
+        altitude = 6.0
+        local_waypoints = [[10.0, 0.0, altitude], [10.0, 10.0, altitude], [0.0, 10.0, altitude], [0.0, 0.0, altitude]]        
         return local_waypoints
 
     def arming_transition(self):
@@ -126,12 +145,11 @@ class BackyardFlyer(MyDrone):
         self.global_home
         self.set_home_position(self.global_position[0], self.global_position[1],
                                self.global_position[2])  
-        self.flight_state = ARMING                        
+        self.flight_state = States.ARMING                        
 
 
     def takeoff_transition(self):
-        """TODO: Fill out this method
-        
+        """        
         1. Set target_position altitude to 3.0m
         2. Command a takeoff to 3.0m
         3. Transition to the TAKEOFF state
@@ -139,22 +157,24 @@ class BackyardFlyer(MyDrone):
         print("takeoff transition")
 
         target_altitude = 3.0
-        self.target_position = np.array([0.0, 0.0, target_altitude])
+        self.target_position[2] = target_altitude
         self.takeoff(target_altitude)
-        self.flight_state = TAKEOFF
+        self.flight_state = States.TAKEOFF
 
     def waypoint_transition(self):
-        """TODO: Fill out this method
-    
+        """    
         1. Command the next waypoint position
         2. Transition to 
          state
         """
         print("waypoint transition")
+        self.target_position = self.all_waypoints.pop(0)
+        print('target position', self.target_position)        
+        self.cmd_position(self.target_position[0], self.target_position[1], self.target_position[2], 0.0)
+        self.flight_state =States.WAYPOINT
 
     def landing_transition(self):
-        """TODO: Fill out this method
-        
+        """        
         1. Command the drone to land
         2. Transition to the LANDING state
         """
@@ -163,8 +183,7 @@ class BackyardFlyer(MyDrone):
         self.flight_state = States.LANDING
 
     def disarming_transition(self):
-        """TODO: Fill out this method
-        
+        """        
         1. Command the drone to disarm
         2. Transition to the DISARMING state
         """
