@@ -9,4 +9,4 @@ The python code you write is similar to how the drone would be controlled from a
 
 ### Example Output:
 
-![plot_ned.png](./images/plot_ned.png)
+![plot_ned.png](./images/plot_ned.small.png)
