@@ -15,7 +15,7 @@ DOWN=2
 
 LON=0
 LAT=1
-ALT=2
+ALT=2  
 
 class MyDrone(Drone):
 
@@ -97,8 +97,8 @@ class BackyardFlyer(Drone):
 
     def velocity_callback(self):
         if self.flight_state == States.LANDING:
-            if self.global_position[2] - self.global_home[2] < 0.1:
-                if abs(self.local_position[2]) < 0.01:
+            if self.global_position[ALT] - self.global_home[ALT] < 0.1:
+                if abs(self.local_position[DOWN]) < 0.01:
                     self.disarming_transition()
 
 
@@ -153,7 +153,7 @@ class BackyardFlyer(Drone):
     def takeoff_transition(self):
         print("takeoff transition")
         target_altitude = 3.0
-        self.target_position[2] = target_altitude
+        self.target_position[ALT] = target_altitude
         self.takeoff(target_altitude)
         self.flight_state = States.TAKEOFF
 
@@ -161,7 +161,7 @@ class BackyardFlyer(Drone):
         print("waypoint transition")
         self.target_position = self.all_waypoints.pop(0)
         print('target position', self.target_position)        
-        self.cmd_position(self.target_position[0], self.target_position[1], self.target_position[2], 0.0)
+        self.cmd_position(self.target_position[NORTH], self.target_position[EAST], self.target_position[ALT], 0.0)
         self.flight_state =States.WAYPOINT
 
     def landing_transition(self):
